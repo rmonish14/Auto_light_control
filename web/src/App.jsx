@@ -9,6 +9,7 @@ import MaintenancePage from './pages/MaintenancePage';
 import LogsPage from './pages/LogsPage';
 import ConfigPage from './pages/ConfigPage';
 import SettingsPage from './pages/SettingsPage';
+import { dbFetchTelemetryHistory } from './services/mongodb';
 
 function get(obj, path, fallback = null) {
   if (!obj) return fallback;
@@ -48,6 +49,24 @@ const PAGE_TITLES = {
   settings: 'System & Database Integration',
 };
 
+function isTimeInSchedule(onTimeStr, offTimeStr) {
+  if (!onTimeStr || !offTimeStr) return false;
+  const [onH, onM] = onTimeStr.split(':').map(Number);
+  const [offH, offM] = offTimeStr.split(':').map(Number);
+  
+  const now = new Date();
+  const currentMin = now.getHours() * 60 + now.getMinutes();
+  const onMin = onH * 60 + onM;
+  const offMin = offH * 60 + offM;
+
+  if (onMin < offMin) {
+    return currentMin >= onMin && currentMin < offMin;
+  } else if (onMin > offMin) {
+    return currentMin >= onMin || currentMin < offMin;
+  }
+  return false;
+}
+
 export default function App() {
   const { connected, telemetry, events, lastSeen, publish } = useMQTT();
   const [page, setPage] = useState('home');
@@ -58,8 +77,8 @@ export default function App() {
   const [localMode, setLocalMode] = useState(null);
   const [localL1, setLocalL1] = useState(null);
   const [localL2, setLocalL2] = useState(null);
-  const [scheduleOnTime, setScheduleOnTime] = useState('07:00');
-  const [scheduleOffTime, setScheduleOffTime] = useState('19:00');
+  const [scheduleOnTime, setScheduleOnTime] = useState(() => localStorage.getItem('lumi-sched-on') || '18:00');
+  const [scheduleOffTime, setScheduleOffTime] = useState(() => localStorage.getItem('lumi-sched-off') || '06:00');
 
   // Telemetry History buffer for Analytics Charts (up to 40 samples)
   const [history, setHistory] = useState([]);
@@ -80,17 +99,14 @@ export default function App() {
     localStorage.setItem('lumi-theme', theme);
   }, [theme]);
 
-  // Fetch initial telemetry history from backend on mount
+  // Fetch initial telemetry history from database on mount
   useEffect(() => {
     if (isSimulator) return;
-    fetch('http://localhost:5000/api/telemetry/history?limit=120')
-      .then(res => {
-        if (!res.ok) throw new Error('API error');
-        return res.json();
-      })
+    dbFetchTelemetryHistory(120)
       .then(data => {
         const formatted = data.map(item => {
-          const d = new Date(item.timestamp);
+          const timestampVal = item.timestamp?.$date || item.timestamp;
+          const d = new Date(timestampVal);
           const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           return {
             time: timeStr,
@@ -100,7 +116,7 @@ export default function App() {
         setHistory(formatted);
       })
       .catch(err => {
-        console.warn('[Backend] Telemetry history fetch failed, using local buffer.', err);
+        console.warn('[MongoDB Client] Telemetry history fetch failed, using local buffer.', err.message);
       });
   }, [isSimulator]);
 
@@ -151,8 +167,9 @@ export default function App() {
           next.status.environment = newEnv;
           next.status.lightIntensity = newEnv === 'BRIGHT' ? 80 + Math.floor(Math.random() * 20) : Math.floor(Math.random() * 15);
           if (next.settings.mode === 'AUTO') {
-            next.status.light1Status = newEnv === 'DARK';
             next.status.light2Status = newEnv === 'DARK';
+          } else if (next.settings.mode === 'SCHEDULE') {
+            next.status.light2Status = isTimeInSchedule(next.settings.scheduleOnTime, next.settings.scheduleOffTime);
           }
         }
         next.maintenance.alerts.highTemp = next.status.temperature > 38;
@@ -199,22 +216,71 @@ export default function App() {
   // Handlers
   const handleModeChange = (newMode) => {
     setLocalMode(newMode);
+    if (newMode !== 'MANUAL') {
+      setLocalL2(null); // Clear manual override so system mode evaluates dynamically
+    }
+
     if (isSimulator) {
       setMockTelemetry(prev => {
         const next = JSON.parse(JSON.stringify(prev));
         next.settings.mode = newMode;
-        if (newMode !== 'MANUAL') {
+        if (newMode === 'AUTO') {
           const dark = next.status.environment === 'DARK';
-          next.status.light1Status = dark;
           next.status.light2Status = dark;
-          setLocalL1(dark);
-          setLocalL2(dark);
+        } else if (newMode === 'SCHEDULE') {
+          const isSchedOn = isTimeInSchedule(next.settings.scheduleOnTime, next.settings.scheduleOffTime);
+          next.status.light2Status = isSchedOn;
         }
         return next;
       });
       addMockEvent('info', `Mode changed to ${newMode}`);
     } else {
       publish({ mode: newMode });
+    }
+  };
+
+  const handlePublishCommand = (payload) => {
+    if (payload.mode) {
+      setLocalMode(payload.mode);
+      if (payload.mode !== 'MANUAL') {
+        setLocalL2(null); // Clear manual override on schedule/auto publish
+      }
+    }
+    if (payload.scheduleConfig) {
+      const { onTime, offTime } = payload.scheduleConfig;
+      if (onTime) {
+        setScheduleOnTime(onTime);
+        localStorage.setItem('lumi-sched-on', onTime);
+      }
+      if (offTime) {
+        setScheduleOffTime(offTime);
+        localStorage.setItem('lumi-sched-off', offTime);
+      }
+    }
+
+    if (isSimulator) {
+      setMockTelemetry(prev => {
+        const next = JSON.parse(JSON.stringify(prev));
+        if (payload.mode) next.settings.mode = payload.mode;
+        if (payload.scheduleConfig) {
+          if (payload.scheduleConfig.onTime) next.settings.scheduleOnTime = payload.scheduleConfig.onTime;
+          if (payload.scheduleConfig.offTime) next.settings.scheduleOffTime = payload.scheduleConfig.offTime;
+        }
+
+        const activeMode = payload.mode || next.settings.mode;
+        if (activeMode === 'SCHEDULE') {
+          const isSchedOn = isTimeInSchedule(next.settings.scheduleOnTime, next.settings.scheduleOffTime);
+          next.status.light2Status = isSchedOn;
+        } else if (activeMode === 'AUTO') {
+          const dark = next.status.environment === 'DARK';
+          next.status.light2Status = dark;
+        }
+
+        return next;
+      });
+      addMockEvent('info', `Schedule configuration updated`);
+    } else {
+      publish(payload);
     }
   };
 
@@ -225,32 +291,17 @@ export default function App() {
       if (!isSimulator) publish({ mode: 'MANUAL' });
     }
 
-    if (relayNum === 1) {
-      setLocalL1(newVal);
-      if (isSimulator) {
-        setMockTelemetry(prev => { 
-          const n = JSON.parse(JSON.stringify(prev)); 
-          n.status.light1Status = newVal; 
-          if (newVal) n.maintenance.light1OnCount = (n.maintenance.light1OnCount || 0) + 1;
-          return n; 
-        });
-        addMockEvent('info', `Channel 1 toggled ${newVal ? 'ON' : 'OFF'}`);
-      } else {
-        publish({ light1Override: newVal });
-      }
+    setLocalL2(newVal);
+    if (isSimulator) {
+      setMockTelemetry(prev => { 
+        const n = JSON.parse(JSON.stringify(prev)); 
+        n.status.light2Status = newVal; 
+        if (newVal) n.maintenance.light2OnCount = (n.maintenance.light2OnCount || 0) + 1;
+        return n; 
+      });
+      addMockEvent('info', `Main Lighting Output toggled ${newVal ? 'ON' : 'OFF'}`);
     } else {
-      setLocalL2(newVal);
-      if (isSimulator) {
-        setMockTelemetry(prev => { 
-          const n = JSON.parse(JSON.stringify(prev)); 
-          n.status.light2Status = newVal; 
-          if (newVal) n.maintenance.light2OnCount = (n.maintenance.light2OnCount || 0) + 1;
-          return n; 
-        });
-        addMockEvent('info', `Channel 2 toggled ${newVal ? 'ON' : 'OFF'}`);
-      } else {
-        publish({ light2Override: newVal });
-      }
+      publish({ light2Override: newVal });
     }
   };
 
@@ -334,7 +385,7 @@ export default function App() {
                 disabled={false}
               />
             )}
-            {page === 'schedule' && <SchedulePage data={dataBundle} publish={publish} disabled={false} />}
+            {page === 'schedule' && <SchedulePage data={dataBundle} publish={handlePublishCommand} disabled={false} />}
             {page === 'maintenance' && <MaintenancePage data={dataBundle} />}
             {page === 'logs' && <LogsPage events={activeEvents} />}
             {page === 'config' && <ConfigPage data={dataBundle} publish={publish} disabled={false} />}

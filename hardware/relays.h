@@ -27,51 +27,12 @@ extern bool pendingSave;
 //--------------------------------------------------
 void initRelays()
 {
-    pinMode(LIGHT1_RELAY_PIN, OUTPUT);
     pinMode(LIGHT2_RELAY_PIN, OUTPUT);
 
     // Initial state is OFF
-    digitalWrite(LIGHT1_RELAY_PIN, RELAY_OFF);
     digitalWrite(LIGHT2_RELAY_PIN, RELAY_OFF);
 
-    light1State = false;
     light2State = false;
-}
-
-//--------------------------------------------------
-// Light 1 Relay Control (LDR Day/Night)
-//--------------------------------------------------
-void setLight1(bool on)
-{
-    if (on)
-    {
-        if (!light1State) // Transition OFF -> ON
-        {
-            digitalWrite(LIGHT1_RELAY_PIN, RELAY_ON);
-            light1State = true;
-            light1OnCount++;
-            lastLight1OnTime = millis();
-            pendingSave = true;
-            Serial.print("[Relay] Light1 ON | Cycle Count: ");
-            Serial.println(light1OnCount);
-        }
-    }
-    else
-    {
-        if (light1State) // Transition ON -> OFF
-        {
-            digitalWrite(LIGHT1_RELAY_PIN, RELAY_OFF);
-            light1State = false;
-            uint32_t elapsed = (millis() - lastLight1OnTime) / 1000;
-            totalLight1OnTime += elapsed;
-            pendingSave = true;
-            Serial.print("[Relay] Light1 OFF | Runtime added: ");
-            Serial.print(elapsed);
-            Serial.print("s | Total: ");
-            Serial.print(totalLight1OnTime / 3600.0f);
-            Serial.println(" hrs");
-        }
-    }
 }
 
 //--------------------------------------------------
@@ -117,16 +78,6 @@ void updateActiveRuntimes()
 {
     uint32_t now = millis();
 
-    if (light1State)
-    {
-        uint32_t elapsed = (now - lastLight1OnTime) / 1000;
-        if (elapsed > 0)
-        {
-            totalLight1OnTime += elapsed;
-            lastLight1OnTime = now;
-            pendingSave = true;
-        }
-    }
 
     if (light2State)
     {

@@ -14,6 +14,18 @@ uint32_t lastLight2OnTime = 0;     // millis
 
 int chickAgeDays = 1;              // default 1 day old
 
+// Schedule settings
+int scheduleOnHour = 7;
+int scheduleOnMin = 0;
+int scheduleOffHour = 19;
+int scheduleOffMin = 0;
+bool scheduleCh1Enabled = true;
+bool scheduleCh2Enabled = true;
+int scheduleDurationDays = 0;      // 0 = Always Run
+int scheduleStartYear = 0;
+int scheduleStartMonth = 0;
+int scheduleStartDay = 0;
+
 bool light1State = false;
 bool light2State = false;
 bool pendingSave = false;
@@ -33,6 +45,17 @@ void initPersistence()
     light2OnCount    = preferences.getUInt("l2OnCount", 0);
     totalLight2OnTime = preferences.getUInt("l2OnTime", 0);
     chickAgeDays     = preferences.getInt("chickAge", 1);
+    
+    scheduleOnHour   = preferences.getInt("schOnHour", 7);
+    scheduleOnMin    = preferences.getInt("schOnMin", 0);
+    scheduleOffHour  = preferences.getInt("schOffHour", 19);
+    scheduleOffMin   = preferences.getInt("schOffMin", 0);
+    scheduleCh1Enabled = preferences.getBool("schCh1", true);
+    scheduleCh2Enabled = preferences.getBool("schCh2", true);
+    scheduleDurationDays = preferences.getInt("schDur", 0);
+    scheduleStartYear = preferences.getInt("schStartYr", 0);
+    scheduleStartMonth = preferences.getInt("schStartMon", 0);
+    scheduleStartDay = preferences.getInt("schStartDay", 0);
 
     Serial.println("------------- PERSISTED VALUES -------------");
     Serial.print("Light1 On Count  : "); Serial.println(light1OnCount);
@@ -55,6 +78,17 @@ void savePersistence()
     preferences.putUInt("l2OnCount",  light2OnCount);
     preferences.putUInt("l2OnTime",   totalLight2OnTime);
     preferences.putInt("chickAge",    chickAgeDays);
+
+    preferences.putInt("schOnHour",   scheduleOnHour);
+    preferences.putInt("schOnMin",    scheduleOnMin);
+    preferences.putInt("schOffHour",  scheduleOffHour);
+    preferences.putInt("schOffMin",   scheduleOffMin);
+    preferences.putBool("schCh1",     scheduleCh1Enabled);
+    preferences.putBool("schCh2",     scheduleCh2Enabled);
+    preferences.putInt("schDur",      scheduleDurationDays);
+    preferences.putInt("schStartYr",  scheduleStartYear);
+    preferences.putInt("schStartMon", scheduleStartMonth);
+    preferences.putInt("schStartDay", scheduleStartDay);
 
     pendingSave = false;
     Serial.println("[Persistence] Telemetry saved to non-volatile flash memory.");

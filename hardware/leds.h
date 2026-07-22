@@ -17,25 +17,14 @@
 //--------------------------------------------------
 void initLEDs()
 {
-    pinMode(LED_LIGHT1_PIN, OUTPUT);
     pinMode(LED_LIGHT2_PIN, OUTPUT);
     pinMode(LED_WIFI_PIN,   OUTPUT);
 
     // All LEDs OFF at boot
-    digitalWrite(LED_LIGHT1_PIN, LOW);
     digitalWrite(LED_LIGHT2_PIN, LOW);
     digitalWrite(LED_WIFI_PIN,   LOW);
 
     Serial.println("Indicator LEDs Initialized.");
-}
-
-//--------------------------------------------------
-// Update Light1 indicator LED
-// Mirrors the Light1 relay state exactly
-//--------------------------------------------------
-void updateLight1LED(bool state)
-{
-    digitalWrite(LED_LIGHT1_PIN, state ? HIGH : LOW);
 }
 
 //--------------------------------------------------

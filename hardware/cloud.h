@@ -71,6 +71,64 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                 pendingSave = true;
             }
         }
+        
+        // Parse nested schedule configurations
+        FirebaseJsonData configData;
+        if (json.get(configData, "scheduleConfig")) {
+            FirebaseJson configJson;
+            // configData.stringValue yields the raw inner JSON string of scheduleConfig
+            configJson.setJsonData(configData.stringValue);
+            
+            FirebaseJsonData val;
+            if (configJson.get(val, "onTime")) {
+                String onTime = val.stringValue;
+                int separator = onTime.indexOf(':');
+                if (separator != -1) {
+                    scheduleOnHour = onTime.substring(0, separator).toInt();
+                    scheduleOnMin = onTime.substring(separator + 1).toInt();
+                    pendingSave = true;
+                }
+            }
+            if (configJson.get(val, "offTime")) {
+                String offTime = val.stringValue;
+                int separator = offTime.indexOf(':');
+                if (separator != -1) {
+                    scheduleOffHour = offTime.substring(0, separator).toInt();
+                    scheduleOffMin = offTime.substring(separator + 1).toInt();
+                    pendingSave = true;
+                }
+            }
+            if (configJson.get(val, "ch1Enabled")) {
+                scheduleCh1Enabled = val.boolValue;
+                pendingSave = true;
+            }
+            if (configJson.get(val, "ch2Enabled")) {
+                scheduleCh2Enabled = val.boolValue;
+                pendingSave = true;
+            }
+            if (configJson.get(val, "durationDays")) {
+                scheduleDurationDays = val.intValue;
+                
+                // Track start date for countdown limit
+                struct tm timeinfo;
+                if (getLocalTime(&timeinfo)) {
+                    scheduleStartYear = timeinfo.tm_year + 1900;
+                    scheduleStartMonth = timeinfo.tm_mon + 1;
+                    scheduleStartDay = timeinfo.tm_mday;
+                } else {
+                    scheduleStartYear = 2026;
+                    scheduleStartMonth = 7;
+                    scheduleStartDay = 22;
+                }
+                pendingSave = true;
+            }
+            
+            Serial.println("[MQTT Command Sync] Schedule settings updated:");
+            Serial.printf("  ON Time  : %02d:%02d\n", scheduleOnHour, scheduleOnMin);
+            Serial.printf("  OFF Time : %02d:%02d\n", scheduleOffHour, scheduleOffMin);
+            Serial.printf("  Ch1/Ch2  : %s / %s\n", scheduleCh1Enabled ? "YES" : "NO", scheduleCh2Enabled ? "YES" : "NO");
+            Serial.printf("  Duration : %d days\n", scheduleDurationDays);
+        }
 
         Serial.print("[MQTT Command Sync] Mode: "); Serial.print(systemMode);
         Serial.print(" | Light1Override: "); Serial.print(light1Override ? "ON" : "OFF");
@@ -223,6 +281,20 @@ void uploadTelemetry()
     json.set("settings/chickAgeDays", chickAgeDays);
     json.set("settings/light2OnTemp", LIGHT2_ON_TEMP);
     json.set("settings/light2OffTemp", LIGHT2_OFF_TEMP);
+    
+    char scheduleOnTimeStr[6];
+    char scheduleOffTimeStr[6];
+    snprintf(scheduleOnTimeStr, sizeof(scheduleOnTimeStr), "%02d:%02d", scheduleOnHour, scheduleOnMin);
+    snprintf(scheduleOffTimeStr, sizeof(scheduleOffTimeStr), "%02d:%02d", scheduleOffHour, scheduleOffMin);
+    
+    json.set("settings/scheduleOnTime",       scheduleOnTimeStr);
+    json.set("settings/scheduleOffTime",      scheduleOffTimeStr);
+    json.set("settings/scheduleCh1Enabled",   scheduleCh1Enabled);
+    json.set("settings/scheduleCh2Enabled",   scheduleCh2Enabled);
+    json.set("settings/scheduleDurationDays", scheduleDurationDays);
+    json.set("settings/scheduleStartYear",    scheduleStartYear);
+    json.set("settings/scheduleStartMonth",   scheduleStartMonth);
+    json.set("settings/scheduleStartDay",     scheduleStartDay);
 
     // 3. Maintenance & Lifespans Section
     json.set("maintenance/light1OnCount",     light1OnCount);
@@ -230,11 +302,11 @@ void uploadTelemetry()
     json.set("maintenance/totalLight1OnTime", totalLight1OnTime);
     json.set("maintenance/totalLight2OnTime", totalLight2OnTime);
 
-    // Bulb Health % Calculations (based on Light1 main lamp)
-    float bulbHoursUsed = totalLight1OnTime / 3600.0f;
+    // Bulb Health % Calculations (based on Light2 main lamp)
+    float bulbHoursUsed = totalLight2OnTime / 3600.0f;
     float hourHealth = ((BULB_RATED_HOURS - bulbHoursUsed) / BULB_RATED_HOURS) * 100.0f;
     if (hourHealth < 0) hourHealth = 0.0f;
-    float cycleHealth = ((BULB_RATED_CYCLES - light1OnCount) / BULB_RATED_CYCLES) * 100.0f;
+    float cycleHealth = ((BULB_RATED_CYCLES - light2OnCount) / BULB_RATED_CYCLES) * 100.0f;
     if (cycleHealth < 0) cycleHealth = 0.0f;
     float bulbHealth = hourHealth < cycleHealth ? hourHealth : cycleHealth;
     json.set("maintenance/bulbHealth", bulbHealth);

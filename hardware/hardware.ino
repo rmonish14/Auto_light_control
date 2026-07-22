@@ -114,47 +114,76 @@ void loop()
     }
     else if (systemMode == "SCHEDULE")
     {
-        // --- Light1 Control: Chick-Age Photoperiod Schedule ---
         struct tm timeinfo;
         bool timeSynced = getLocalTime(&timeinfo);
 
         if (timeSynced)
         {
-            int currentHour = timeinfo.tm_hour;
+            // A. Check schedule duration expiration
+            if (scheduleDurationDays > 0 && scheduleStartYear > 0)
+            {
+                struct tm start_tm = {0};
+                start_tm.tm_year = scheduleStartYear - 1900;
+                start_tm.tm_mon = scheduleStartMonth - 1;
+                start_tm.tm_mday = scheduleStartDay;
+                start_tm.tm_hour = 0;
+                start_tm.tm_min = 0;
+                start_tm.tm_sec = 0;
+                start_tm.tm_isdst = -1; // Let mktime determine DST
 
-            if (chickAgeDays <= 3)
-            {
-                // Day 1-3: 24 hours continuous light
-                setLight1(true);
+                time_t startTime = mktime(&start_tm);
+                time_t nowTime = mktime(&timeinfo);
+
+                double seconds = difftime(nowTime, startTime);
+                double elapsedDays = seconds / (24.0 * 3600.0);
+
+                if (elapsedDays >= (double)scheduleDurationDays)
+                {
+                    systemMode = "MANUAL";
+                    light1Override = false;
+                    light2Override = false;
+                    setLight1(false);
+                    setLight2(false);
+                    pendingSave = true;
+                    logEvent("Schedule completed (" + String(scheduleDurationDays) + " days). Reverted to MANUAL.");
+                    return;
+                }
             }
-            else if (chickAgeDays <= 7)
+
+            // B. Evaluate ON/OFF scheduler window
+            int currentMin = timeinfo.tm_hour * 60 + timeinfo.tm_min;
+            int onMin = scheduleOnHour * 60 + scheduleOnMin;
+            int offMin = scheduleOffHour * 60 + scheduleOffMin;
+
+            bool isScheduledON = false;
+            if (onMin < offMin)
             {
-                // Day 4-7: 20 Hours light, 4 Hours dark (10PM - 2AM)
-                setLight1(!(currentHour >= 22 || currentHour < 2));
+                // Same-day schedule (e.g. 07:00 to 19:00)
+                isScheduledON = (currentMin >= onMin && currentMin < offMin);
             }
             else
             {
-                // Day 8+: 18 Hours light, 6 Hours dark (9PM - 3AM)
-                setLight1(!(currentHour >= 21 || currentHour < 3));
+                // Cross-midnight schedule (e.g. 21:00 to 05:00 next day)
+                isScheduledON = (currentMin >= onMin || currentMin < offMin);
             }
+
+            // Apply scheduled state directly to the Main Lighting Channel (Channel 2)
+            setLight2(isScheduledON);
         }
         else
         {
-            // Time sync failed: Fallback to LDR AUTO mode
+            // Time sync failed: Fallback to LDR AUTO mode on Main Light (Channel 2)
             static unsigned long lastWarn = 0;
             if (now - lastWarn > 30000) {
                 Serial.println("[Schedule Warning] NTP not synced. Falling back to LDR AUTO.");
                 lastWarn = now;
             }
-            setLight1(dark);
+            
+            setLight2(dark);
         }
-
-        // --- Light2 follows same schedule as Light1 ---
-        setLight2(light1State);
     }
 
     // 4. Update indicator LEDs to match relay states
-    updateLight1LED(light1State);
     updateLight2LED(light2State);
 
     // 5. Interrupt triggers — detect state changes and show LCD notifications
@@ -166,8 +195,7 @@ void loop()
         prevDarkState = dark;
         char line0[17], line1[17];
         snprintf(line0, sizeof(line0), dark ? ">>  Now: DARK   " : ">>  Now: BRIGHT ");
-        snprintf(line1, sizeof(line1), "L1:%-3s   L2:%-3s",
-                 light1State ? "ON" : "OFF",
+        snprintf(line1, sizeof(line1), "Light Status:%-3s",
                  light2State ? "ON" : "OFF");
         showInterrupt(line0, line1);
     }
@@ -211,8 +239,7 @@ void loop()
         // Print status to Serial Monitor
         printSensors();
         Serial.print("Mode        : "); Serial.println(systemMode);
-        Serial.print("Light1 Relay: "); Serial.println(light1State ? "ON" : "OFF");
-        Serial.print("Light2 Relay: "); Serial.println(light2State ? "ON" : "OFF");
+        Serial.print("Light Relay : "); Serial.println(light2State ? "ON" : "OFF");
 
         struct tm timeinfo;
         if (getLocalTime(&timeinfo)) {

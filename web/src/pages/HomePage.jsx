@@ -14,8 +14,8 @@ const colorMap = {
 
 export default function HomePage({ data }) {
   const { temperature, environment, lightIntensity, wifiRSSI,
-          light1Status, light2Status, mode,
-          l1Runtime, l2Runtime, l1Cycles, l2Cycles,
+          light2Status, mode,
+          l2Runtime, l2Cycles,
           highTempAlert } = data;
 
   const RATED_SWITCHING_LIMIT = 10000;
@@ -23,10 +23,8 @@ export default function HomePage({ data }) {
   const temp = getTempColor(temperature);
   const isDark = environment === 'DARK';
   const pct = temperature != null ? Math.min(100, Math.round((temperature / 50) * 100)) : 0;
-  const l1Hrs = ((l1Runtime || 0) / 3600).toFixed(1);
   const l2Hrs = ((l2Runtime || 0) / 3600).toFixed(1);
 
-  const ch1Remaining = Math.max(0, RATED_SWITCHING_LIMIT - (l1Cycles || 0));
   const ch2Remaining = Math.max(0, RATED_SWITCHING_LIMIT - (l2Cycles || 0));
 
   return (
@@ -112,15 +110,7 @@ export default function HomePage({ data }) {
               }}>{mode}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-2)' }}>Channel 1 Relay</span>
-              <span className="status-badge" style={{
-                background: light1Status ? 'var(--green-dim)' : 'var(--bg-3)',
-                borderColor: light1Status ? 'rgba(34,197,94,0.2)' : 'var(--border-2)',
-                color: light1Status ? 'var(--green)' : 'var(--text-3)',
-              }}>{light1Status ? '● ENERGIZED' : '○ OFF'}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-2)' }}>Channel 2 Relay</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-2)' }}>Lighting Relay (GPIO 27)</span>
               <span className="status-badge" style={{
                 background: light2Status ? 'var(--green-dim)' : 'var(--bg-3)',
                 borderColor: light2Status ? 'rgba(34,197,94,0.2)' : 'var(--border-2)',
@@ -139,42 +129,13 @@ export default function HomePage({ data }) {
 
       {/* System Status Summary */}
       <div className="section-title">Channel Switching Lifespan Overview (10,000 Rated Limit)</div>
-      <div className="page-grid-2">
-        {/* Channel 1 Card */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-label">
-              <div className="card-icon" style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>💡</div>
-              Channel 1 — Primary Lighting
-            </div>
-            <div className="card-badge" style={{
-              background: light1Status ? 'var(--green-dim)' : 'var(--bg-3)',
-              borderColor: light1Status ? 'rgba(34,197,94,0.3)' : 'var(--border-2)',
-              color: light1Status ? 'var(--green)' : 'var(--text-3)',
-            }}>{light1Status ? '● ENERGIZED' : '○ OFF'}</div>
-          </div>
-          <div className="relay-stats-row">
-            <div className="stat-cell">
-              <div className="stat-cell-label">Runtime</div>
-              <div className="stat-cell-value">{l1Hrs}h</div>
-            </div>
-            <div className="stat-cell">
-              <div className="stat-cell-label">Switches Used</div>
-              <div className="stat-cell-value" style={{ color: 'var(--accent)' }}>{l1Cycles ?? 0}</div>
-            </div>
-            <div className="stat-cell">
-              <div className="stat-cell-label">Switches Remaining</div>
-              <div className="stat-cell-value" style={{ color: 'var(--green)' }}>{ch1Remaining.toLocaleString()}</div>
-            </div>
-          </div>
-        </div>
-
+      <div style={{ maxWidth: 600 }}>
         {/* Channel 2 Card */}
         <div className="card">
           <div className="card-header">
             <div className="card-label">
-              <div className="card-icon" style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}>💡</div>
-              Channel 2 — Auxiliary Lighting
+              <div className="card-icon" style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>💡</div>
+              Main Lighting Output (CH2 / GPIO 27)
             </div>
             <div className="card-badge" style={{
               background: light2Status ? 'var(--green-dim)' : 'var(--bg-3)',
@@ -193,7 +154,7 @@ export default function HomePage({ data }) {
             </div>
             <div className="stat-cell">
               <div className="stat-cell-label">Switches Remaining</div>
-              <div className="stat-cell-value" style={{ color: 'var(--blue)' }}>{ch2Remaining.toLocaleString()}</div>
+              <div className="stat-cell-value" style={{ color: 'var(--green)' }}>{ch2Remaining.toLocaleString()}</div>
             </div>
           </div>
         </div>

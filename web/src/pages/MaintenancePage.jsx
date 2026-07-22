@@ -56,64 +56,20 @@ export default function MaintenancePage({ data }) {
             Total System Cycles
           </div>
           <div className="metric-value" style={{ color: 'var(--blue)' }}>
-            {ch1SwitchesUsed + ch2SwitchesUsed}
+            {ch2SwitchesUsed}
           </div>
-          <div className="metric-sub">Combined Relay Switch Operations</div>
+          <div className="metric-sub">Relay Switch Operations</div>
         </div>
       </div>
 
-      <div className="section-title">Channel Component Lifespan Analytics (10,000 Rated Limit)</div>
-      <div className="page-grid-2">
-        {/* Channel 1 Maintenance */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-label">
-              <div className="card-icon" style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>💡</div>
-              Channel 1 — Primary Lighting
-            </div>
-            <div className="card-badge" style={{ background: 'var(--green-dim)', color: 'var(--green)', borderColor: 'rgba(34,197,94,0.2)' }}>
-              {ch1Health > 20 ? 'HEALTHY' : 'REPLACE SOON'}
-            </div>
-          </div>
-
-          <div style={{ margin: '12px 0 16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: 6 }}>
-              <span style={{ color: 'var(--text-2)' }}>Remaining Switching Capacity</span>
-              <span style={{ fontFamily: "'JetBrains Mono'", fontWeight: 700, color: 'var(--accent)' }}>
-                {ch1SwitchesRemaining.toLocaleString()} / 10,000 switches ({ch1Health.toFixed(1)}%)
-              </span>
-            </div>
-            <div className="progress-track">
-              <div className="progress-fill" style={{ width: `${ch1Health}%`, background: 'var(--accent)' }} />
-            </div>
-          </div>
-
-          <div className="relay-stats-row">
-            <div className="stat-cell">
-              <div className="stat-cell-label">Operating Runtime</div>
-              <div className="stat-cell-value">{formatHours(l1Runtime)}</div>
-            </div>
-            <div className="stat-cell">
-              <div className="stat-cell-label">Switches Used</div>
-              <div className="stat-cell-value">{ch1SwitchesUsed}</div>
-            </div>
-            <div className="stat-cell">
-              <div className="stat-cell-label">Switches Left</div>
-              <div className="stat-cell-value" style={{ color: 'var(--green)' }}>{ch1SwitchesRemaining.toLocaleString()}</div>
-            </div>
-            <div className="stat-cell">
-              <div className="stat-cell-label">Max Rated Limit</div>
-              <div className="stat-cell-value">10,000</div>
-            </div>
-          </div>
-        </div>
-
+      <div className="section-title">Component Lifespan Analytics (10,000 Rated Limit)</div>
+      <div style={{ maxWidth: 600 }}>
         {/* Channel 2 Maintenance */}
         <div className="card">
           <div className="card-header">
             <div className="card-label">
-              <div className="card-icon" style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}>💡</div>
-              Channel 2 — Auxiliary Lighting
+              <div className="card-icon" style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>💡</div>
+              Main Lighting Channel (CH2)
             </div>
             <div className="card-badge" style={{ background: 'var(--green-dim)', color: 'var(--green)', borderColor: 'rgba(34,197,94,0.2)' }}>
               {ch2Health > 20 ? 'HEALTHY' : 'REPLACE SOON'}
@@ -123,12 +79,12 @@ export default function MaintenancePage({ data }) {
           <div style={{ margin: '12px 0 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: 6 }}>
               <span style={{ color: 'var(--text-2)' }}>Remaining Switching Capacity</span>
-              <span style={{ fontFamily: "'JetBrains Mono'", fontWeight: 700, color: 'var(--blue)' }}>
+              <span style={{ fontFamily: "'JetBrains Mono'", fontWeight: 700, color: 'var(--accent)' }}>
                 {ch2SwitchesRemaining.toLocaleString()} / 10,000 switches ({ch2Health.toFixed(1)}%)
               </span>
             </div>
             <div className="progress-track">
-              <div className="progress-fill" style={{ width: `${ch2Health}%`, background: 'var(--blue)' }} />
+              <div className="progress-fill" style={{ width: `${ch2Health}%`, background: 'var(--accent)' }} />
             </div>
           </div>
 
@@ -143,7 +99,7 @@ export default function MaintenancePage({ data }) {
             </div>
             <div className="stat-cell">
               <div className="stat-cell-label">Switches Left</div>
-              <div className="stat-cell-value" style={{ color: 'var(--blue)' }}>{ch2SwitchesRemaining.toLocaleString()}</div>
+              <div className="stat-cell-value" style={{ color: 'var(--green)' }}>{ch2SwitchesRemaining.toLocaleString()}</div>
             </div>
             <div className="stat-cell">
               <div className="stat-cell-label">Max Rated Limit</div>

@@ -1,4 +1,16 @@
+import { useState } from 'react';
+import { getMongoConfig, saveMongoConfig } from '../services/mongodb';
+
 export default function SettingsPage() {
+  const [mongoConfig, setMongoConfig] = useState(() => getMongoConfig());
+  const [savedMsg, setSavedMsg] = useState(false);
+
+  const handleSave = (e) => {
+    e.preventDefault();
+    saveMongoConfig(mongoConfig);
+    setSavedMsg(true);
+    setTimeout(() => setSavedMsg(false), 3000);
+  };
   return (
     <div className="page">
       <div className="section-title">MQTT Broker</div>
@@ -91,36 +103,92 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="section-title">Database</div>
+      <div className="section-title">MongoDB Integration (Direct Frontend)</div>
       <div className="card" style={{ maxWidth: 600 }}>
-        <div className="card-label">
+        <div className="card-label" style={{ marginBottom: 12 }}>
           <div className="card-icon" style={{ background: 'var(--green-dim)', color: 'var(--green)' }}>🗄️</div>
-          MongoDB Integration
+          MongoDB Atlas Data API Settings
         </div>
-        <div style={{ fontSize: '0.85rem', color: 'var(--text-2)', lineHeight: 1.6 }}>
-          The backend uses <strong style={{ color: 'var(--text-1)' }}>MongoDB</strong> to persist telemetry, events, and configuration.
-          See <code style={{ background: 'var(--bg-3)', padding: '2px 6px', borderRadius: 4, fontSize: '0.78rem' }}>MONGODB_SCHEMA.md</code> in the web folder for complete collection schemas, indexes, and REST API endpoint specifications.
+        <div style={{ fontSize: '0.82rem', color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 16 }}>
+          LumiCore connects directly to your MongoDB database from the browser using the **MongoDB Atlas Data API**. 
+          To enable direct uploads, paste your Data API Endpoint and API Key below.
         </div>
-        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {['telemetry', 'events', 'commands', 'config'].map(col => (
-            <div key={col} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 12px', background: 'var(--bg-2)', borderRadius: 'var(--radius-xs)',
-              fontSize: '0.82rem',
-            }}>
-              <span style={{ color: 'var(--green)' }}>●</span>
-              <span style={{ fontFamily: "'JetBrains Mono'", fontWeight: 600, color: 'var(--text-1)' }}>
-                db.{col}
-              </span>
-              <span style={{ color: 'var(--text-3)', marginLeft: 'auto', fontSize: '0.72rem' }}>
-                {col === 'telemetry' ? 'Sensor snapshots (every 2s)'
-                : col === 'events' ? 'Alert & state change logs'
-                : col === 'commands' ? 'Audit log (optional)'
-                : 'System configuration'}
-              </span>
+
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-2)', textTransform: 'uppercase' }}>Data API URL Endpoint</label>
+            <input 
+              type="text" 
+              placeholder="https://ap-south-1.aws.data.mongodb-api.com/app/data-xxxx/endpoint/data/v1" 
+              value={mongoConfig.url} 
+              onChange={e => setMongoConfig(prev => ({ ...prev, url: e.target.value }))}
+              style={{
+                background: 'var(--bg-3)', border: '1px solid var(--border-1)', color: 'var(--text-1)',
+                padding: '10px 12px', borderRadius: 'var(--radius-xs)', fontSize: '0.82rem', width: '100%',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-2)', textTransform: 'uppercase' }}>Atlas API Key</label>
+            <input 
+              type="password" 
+              placeholder="••••••••••••••••••••••••••••••••" 
+              value={mongoConfig.apiKey} 
+              onChange={e => setMongoConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+              style={{
+                background: 'var(--bg-3)', border: '1px solid var(--border-1)', color: 'var(--text-1)',
+                padding: '10px 12px', borderRadius: 'var(--radius-xs)', fontSize: '0.82rem', width: '100%',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-2)', textTransform: 'uppercase' }}>Cluster Name</label>
+              <input 
+                type="text" 
+                value={mongoConfig.cluster} 
+                onChange={e => setMongoConfig(prev => ({ ...prev, cluster: e.target.value }))}
+                style={{
+                  background: 'var(--bg-3)', border: '1px solid var(--border-1)', color: 'var(--text-1)',
+                  padding: '10px 12px', borderRadius: 'var(--radius-xs)', fontSize: '0.82rem', width: '100%',
+                  boxSizing: 'border-box'
+                }}
+              />
             </div>
-          ))}
-        </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-2)', textTransform: 'uppercase' }}>Database Name</label>
+              <input 
+                type="text" 
+                value={mongoConfig.database} 
+                onChange={e => setMongoConfig(prev => ({ ...prev, database: e.target.value }))}
+                style={{
+                  background: 'var(--bg-3)', border: '1px solid var(--border-1)', color: 'var(--text-1)',
+                  padding: '10px 12px', borderRadius: 'var(--radius-xs)', fontSize: '0.82rem', width: '100%',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
+            <button 
+              type="submit" 
+              className="btn btn-primary"
+              style={{ padding: '10px 20px', fontSize: '0.82rem', fontWeight: 600 }}
+            >
+              💾 Save Connection Settings
+            </button>
+            {savedMsg && (
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--green)' }}>
+                ✓ MongoDB Settings Saved!
+              </span>
+            )}
+          </div>
+        </form>
       </div>
     </div>
   );

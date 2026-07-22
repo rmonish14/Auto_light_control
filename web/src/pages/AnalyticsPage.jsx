@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { dbFetchInsights } from '../services/mongodb';
 
 export default function AnalyticsPage({ history, data }) {
   const { l1Cycles = 0, l2Cycles = 0, temperature } = data;
@@ -6,27 +7,23 @@ export default function AnalyticsPage({ history, data }) {
   const [dbStatus, setDbStatus] = useState('connecting');
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/insights')
-      .then(res => {
-        if (!res.ok) throw new Error('API error');
-        return res.json();
-      })
+    dbFetchInsights()
       .then(data => {
+        if (!data) {
+          setDbStatus('error');
+          return;
+        }
         setInsights(data);
         setDbStatus('connected');
       })
       .catch(err => {
-        console.warn('[Backend] Failed to load historical insights from DB.', err);
+        console.warn('[MongoDB Client] Failed to load historical insights from DB.', err.message);
         setDbStatus('error');
       });
   }, []);
 
   const RATED_SWITCHING_LIMIT = 10000;
 
-  // Channel 1 Switching Calculations
-  const ch1SwitchesUsed = l1Cycles;
-  const ch1SwitchesRemaining = Math.max(0, RATED_SWITCHING_LIMIT - ch1SwitchesUsed);
-  const ch1SwitchingHealthPct = Math.max(0, Math.min(100, (ch1SwitchesRemaining / RATED_SWITCHING_LIMIT) * 100));
 
   // Channel 2 Switching Calculations
   const ch2SwitchesUsed = l2Cycles;
@@ -86,21 +83,9 @@ export default function AnalyticsPage({ history, data }) {
         <div className="card">
           <div className="card-label">
             <div className="card-icon" style={{ background: 'var(--green-dim)', color: 'var(--green)' }}>🔄</div>
-            Channel 1 Remaining Switches
+            Relay Remaining Switches
           </div>
           <div className="metric-value" style={{ color: 'var(--green)' }}>
-            {ch1SwitchesRemaining.toLocaleString()}
-            <span className="metric-unit"> / 10k</span>
-          </div>
-          <div className="metric-sub">{ch1SwitchingHealthPct.toFixed(1)}% Useful Life Remaining</div>
-        </div>
-
-        <div className="card">
-          <div className="card-label">
-            <div className="card-icon" style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}>🔄</div>
-            Channel 2 Remaining Switches
-          </div>
-          <div className="metric-value" style={{ color: 'var(--blue)' }}>
             {ch2SwitchesRemaining.toLocaleString()}
             <span className="metric-unit"> / 10k</span>
           </div>
