@@ -240,21 +240,24 @@ export default function App() {
   };
 
   const handlePublishCommand = (payload) => {
+    // Determine the final on/off times to use for immediate evaluation
+    const newOnTime = payload.scheduleConfig?.onTime;
+    const newOffTime = payload.scheduleConfig?.offTime;
+
     if (payload.mode) {
       setLocalMode(payload.mode);
       if (payload.mode !== 'MANUAL') {
-        setLocalL2(null); // Clear manual override on schedule/auto publish
+        setLocalL2(null); // Clear manual override so schedule evaluates dynamically
       }
     }
     if (payload.scheduleConfig) {
-      const { onTime, offTime } = payload.scheduleConfig;
-      if (onTime) {
-        setScheduleOnTime(onTime);
-        localStorage.setItem('lumi-sched-on', onTime);
+      if (newOnTime) {
+        setScheduleOnTime(newOnTime);
+        localStorage.setItem('lumi-sched-on', newOnTime);
       }
-      if (offTime) {
-        setScheduleOffTime(offTime);
-        localStorage.setItem('lumi-sched-off', offTime);
+      if (newOffTime) {
+        setScheduleOffTime(newOffTime);
+        localStorage.setItem('lumi-sched-off', newOffTime);
       }
     }
 
@@ -262,15 +265,22 @@ export default function App() {
       setMockTelemetry(prev => {
         const next = JSON.parse(JSON.stringify(prev));
         if (payload.mode) next.settings.mode = payload.mode;
-        if (payload.scheduleConfig) {
-          if (payload.scheduleConfig.onTime) next.settings.scheduleOnTime = payload.scheduleConfig.onTime;
-          if (payload.scheduleConfig.offTime) next.settings.scheduleOffTime = payload.scheduleConfig.offTime;
-        }
+
+        // Use the freshly-submitted times directly (not stale state) for immediate evaluation
+        const resolvedOnTime  = newOnTime  ?? next.settings.scheduleOnTime;
+        const resolvedOffTime = newOffTime ?? next.settings.scheduleOffTime;
+        if (newOnTime)  next.settings.scheduleOnTime  = newOnTime;
+        if (newOffTime) next.settings.scheduleOffTime = newOffTime;
 
         const activeMode = payload.mode || next.settings.mode;
         if (activeMode === 'SCHEDULE') {
-          const isSchedOn = isTimeInSchedule(next.settings.scheduleOnTime, next.settings.scheduleOffTime);
+          // Strict evaluation: always use the just-submitted times
+          const isSchedOn = isTimeInSchedule(resolvedOnTime, resolvedOffTime);
           next.status.light2Status = isSchedOn;
+          addMockEvent(
+            'info',
+            `Schedule applied: ON=${resolvedOnTime} OFF=${resolvedOffTime} → light ${isSchedOn ? 'ENERGIZED' : 'DE-ENERGIZED'}`
+          );
         } else if (activeMode === 'AUTO') {
           const dark = next.status.environment === 'DARK';
           next.status.light2Status = dark;
@@ -278,7 +288,6 @@ export default function App() {
 
         return next;
       });
-      addMockEvent('info', `Schedule configuration updated`);
     } else {
       publish(payload);
     }
@@ -291,17 +300,32 @@ export default function App() {
       if (!isSimulator) publish({ mode: 'MANUAL' });
     }
 
-    setLocalL2(newVal);
-    if (isSimulator) {
-      setMockTelemetry(prev => { 
-        const n = JSON.parse(JSON.stringify(prev)); 
-        n.status.light2Status = newVal; 
-        if (newVal) n.maintenance.light2OnCount = (n.maintenance.light2OnCount || 0) + 1;
-        return n; 
-      });
-      addMockEvent('info', `Main Lighting Output toggled ${newVal ? 'ON' : 'OFF'}`);
+    if (relayNum === 1) {
+      setLocalL1(newVal);
+      if (isSimulator) {
+        setMockTelemetry(prev => { 
+          const n = JSON.parse(JSON.stringify(prev)); 
+          n.status.light1Status = newVal; 
+          if (newVal) n.maintenance.light1OnCount = (n.maintenance.light1OnCount || 0) + 1;
+          return n; 
+        });
+        addMockEvent('info', `Relay 1 (CH1) toggled ${newVal ? 'ON' : 'OFF'}`);
+      } else {
+        publish({ mode: 'MANUAL', light1Override: newVal });
+      }
     } else {
-      publish({ light2Override: newVal });
+      setLocalL2(newVal);
+      if (isSimulator) {
+        setMockTelemetry(prev => { 
+          const n = JSON.parse(JSON.stringify(prev)); 
+          n.status.light2Status = newVal; 
+          if (newVal) n.maintenance.light2OnCount = (n.maintenance.light2OnCount || 0) + 1;
+          return n; 
+        });
+        addMockEvent('info', `Relay 2 (CH2) toggled ${newVal ? 'ON' : 'OFF'}`);
+      } else {
+        publish({ mode: 'MANUAL', light2Override: newVal });
+      }
     }
   };
 

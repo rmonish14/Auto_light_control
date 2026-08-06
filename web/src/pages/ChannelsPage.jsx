@@ -12,7 +12,10 @@ export default function ChannelsPage({ data, onToggle, onModeChange, disabled })
   const isManual = mode === 'MANUAL';
 
   const channels = [
-    { id: 2, name: 'Main Lighting Output', sub: 'Active Facility Lighting Channel', icon: '💡',
+    { id: 1, name: 'Light Relay 1 (CH1)', sub: 'Auxiliary Lighting Channel', icon: '💡',
+      state: light1Status, runtime: l1Runtime, cycles: l1Cycles || 0, pin: 'GPIO 26 Relay (LED GPIO 4)',
+      remainingSwitches: Math.max(0, RATED_SWITCHING_LIMIT - (l1Cycles || 0)) },
+    { id: 2, name: 'Light Relay 2 (CH2)', sub: 'Main Facility Lighting Channel', icon: '💡',
       state: light2Status, runtime: l2Runtime, cycles: l2Cycles || 0, pin: 'GPIO 27 Relay (LED GPIO 5)',
       remainingSwitches: Math.max(0, RATED_SWITCHING_LIMIT - (l2Cycles || 0)) },
   ];
@@ -46,7 +49,7 @@ export default function ChannelsPage({ data, onToggle, onModeChange, disabled })
       </div>
 
       <div className="section-title">Relay Output Control (10,000 Rated Switch Limit)</div>
-      <div style={{ maxWidth: 600 }}>
+      <div className="page-grid-2">
         {channels.map(ch => {
           const isOn = ch.state;
           const healthPct = ((ch.remainingSwitches / RATED_SWITCHING_LIMIT) * 100).toFixed(1);

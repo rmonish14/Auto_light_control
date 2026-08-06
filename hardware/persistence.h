@@ -26,9 +26,16 @@ int scheduleStartYear = 0;
 int scheduleStartMonth = 0;
 int scheduleStartDay = 0;
 
+bool scheduleLight1State = false;
+bool scheduleLight2State = false;
+
 bool light1State = false;
 bool light2State = false;
 bool pendingSave = false;
+
+extern float luxThreshold;
+extern float light2OnTemp;
+extern float light2OffTemp;
 
 // Instance of Preferences
 Preferences preferences;
@@ -41,10 +48,14 @@ void initPersistence()
     preferences.begin("poultry", false);
 
     light1OnCount    = preferences.getUInt("l1OnCount", 0);
-    totalLight1OnTime = preferences.getUInt("l1OnTime", 0);
+    totalLight1OnTime = preferences.getUInt("l1Time", 0);
     light2OnCount    = preferences.getUInt("l2OnCount", 0);
-    totalLight2OnTime = preferences.getUInt("l2OnTime", 0);
+    totalLight2OnTime = preferences.getUInt("l2Time", 0);
     chickAgeDays     = preferences.getInt("chickAge", 1);
+    
+    luxThreshold     = preferences.getFloat("luxThresh", 50.0f);
+    light2OnTemp     = preferences.getFloat("l2OnTemp", 34.0f);
+    light2OffTemp    = preferences.getFloat("l2OffTemp", 30.0f);
     
     scheduleOnHour   = preferences.getInt("schOnHour", 7);
     scheduleOnMin    = preferences.getInt("schOnMin", 0);
@@ -63,6 +74,9 @@ void initPersistence()
     Serial.print("Light2 On Count  : "); Serial.println(light2OnCount);
     Serial.print("Light2 Runtime   : "); Serial.print(totalLight2OnTime / 3600.0f, 2); Serial.println(" hours");
     Serial.print("Chick Age (Days) : "); Serial.println(chickAgeDays);
+    Serial.print("Lux Threshold    : "); Serial.println(luxThreshold, 1);
+    Serial.print("Light 2 Temp ON  : "); Serial.print(light2OnTemp, 1); Serial.println(" C");
+    Serial.print("Light 2 Temp OFF : "); Serial.print(light2OffTemp, 1); Serial.println(" C");
     Serial.println("--------------------------------------------");
 }
 
@@ -74,10 +88,14 @@ void savePersistence()
     if (!pendingSave) return;
 
     preferences.putUInt("l1OnCount",  light1OnCount);
-    preferences.putUInt("l1OnTime",   totalLight1OnTime);
+    preferences.putUInt("l1Time",     totalLight1OnTime);
     preferences.putUInt("l2OnCount",  light2OnCount);
-    preferences.putUInt("l2OnTime",   totalLight2OnTime);
+    preferences.putUInt("l2Time",     totalLight2OnTime);
     preferences.putInt("chickAge",    chickAgeDays);
+
+    preferences.putFloat("luxThresh", luxThreshold);
+    preferences.putFloat("l2OnTemp",  light2OnTemp);
+    preferences.putFloat("l2OffTemp", light2OffTemp);
 
     preferences.putInt("schOnHour",   scheduleOnHour);
     preferences.putInt("schOnMin",    scheduleOnMin);

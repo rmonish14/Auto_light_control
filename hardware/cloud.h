@@ -3,8 +3,7 @@
 
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include <Firebase_ESP_Client.h>
-#include <time.h>
+#include <ArduinoJson.h>
 #include "config.h"
 #include "sensors.h"
 #include "relays.h"
@@ -51,37 +50,71 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
 
     if (String(topic) == MQTT_TOPIC_COMMANDS)
     {
-        FirebaseJson json;
-        json.setJsonData(payloadStr);
-        FirebaseJsonData data;
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, payloadStr);
+        if (error) {
+            Serial.print("[MQTT Error] JSON parse failed: ");
+            Serial.println(error.c_str());
+            return;
+        }
 
-        if (json.get(data, "mode")) {
-            systemMode = data.stringValue;
+        if (doc.containsKey("mode")) {
+            systemMode = doc["mode"].as<String>();
         }
-        if (json.get(data, "light1Override")) {
-            light1Override = data.boolValue;
+        if (doc.containsKey("light1Override")) {
+            light1Override = doc["light1Override"].as<bool>();
         }
-        if (json.get(data, "light2Override")) {
-            light2Override = data.boolValue;
+        if (doc.containsKey("light2Override")) {
+            light2Override = doc["light2Override"].as<bool>();
         }
-        if (json.get(data, "chickAgeDays")) {
-            int age = data.intValue;
+        if (doc.containsKey("scheduleLight1")) {
+            scheduleLight1State = doc["scheduleLight1"].as<bool>();
+        }
+        if (doc.containsKey("scheduleLight2")) {
+            scheduleLight2State = doc["scheduleLight2"].as<bool>();
+        }
+        if (doc.containsKey("luxThreshold")) {
+            luxThreshold = doc["luxThreshold"].as<float>();
+            pendingSave = true;
+        }
+        if (doc.containsKey("light2OnTemp")) {
+            light2OnTemp = doc["light2OnTemp"].as<float>();
+            pendingSave = true;
+        }
+        if (doc.containsKey("light2OffTemp")) {
+            light2OffTemp = doc["light2OffTemp"].as<float>();
+            pendingSave = true;
+        }
+        if (doc.containsKey("chickAgeDays")) {
+            int age = doc["chickAgeDays"].as<int>();
             if (age != chickAgeDays) {
                 chickAgeDays = age;
                 pendingSave = true;
             }
         }
         
+        // Parse nested threshold configurations if sent from Config Page
+        if (doc.containsKey("configUpdate")) {
+            JsonObject configObj = doc["configUpdate"];
+            if (configObj.containsKey("luxThreshold")) {
+                luxThreshold = configObj["luxThreshold"].as<float>();
+                pendingSave = true;
+            }
+            if (configObj.containsKey("light2OnTemp")) {
+                light2OnTemp = configObj["light2OnTemp"].as<float>();
+                pendingSave = true;
+            }
+            if (configObj.containsKey("light2OffTemp")) {
+                light2OffTemp = configObj["light2OffTemp"].as<float>();
+                pendingSave = true;
+            }
+        }
+        
         // Parse nested schedule configurations
-        FirebaseJsonData configData;
-        if (json.get(configData, "scheduleConfig")) {
-            FirebaseJson configJson;
-            // configData.stringValue yields the raw inner JSON string of scheduleConfig
-            configJson.setJsonData(configData.stringValue);
-            
-            FirebaseJsonData val;
-            if (configJson.get(val, "onTime")) {
-                String onTime = val.stringValue;
+        if (doc.containsKey("scheduleConfig")) {
+            JsonObject configJson = doc["scheduleConfig"];
+            if (configJson.containsKey("onTime")) {
+                String onTime = configJson["onTime"].as<String>();
                 int separator = onTime.indexOf(':');
                 if (separator != -1) {
                     scheduleOnHour = onTime.substring(0, separator).toInt();
@@ -89,8 +122,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                     pendingSave = true;
                 }
             }
-            if (configJson.get(val, "offTime")) {
-                String offTime = val.stringValue;
+            if (configJson.containsKey("offTime")) {
+                String offTime = configJson["offTime"].as<String>();
                 int separator = offTime.indexOf(':');
                 if (separator != -1) {
                     scheduleOffHour = offTime.substring(0, separator).toInt();
@@ -98,28 +131,19 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
                     pendingSave = true;
                 }
             }
-            if (configJson.get(val, "ch1Enabled")) {
-                scheduleCh1Enabled = val.boolValue;
+            if (configJson.containsKey("ch1Enabled")) {
+                scheduleCh1Enabled = configJson["ch1Enabled"].as<bool>();
                 pendingSave = true;
             }
-            if (configJson.get(val, "ch2Enabled")) {
-                scheduleCh2Enabled = val.boolValue;
+            if (configJson.containsKey("ch2Enabled")) {
+                scheduleCh2Enabled = configJson["ch2Enabled"].as<bool>();
                 pendingSave = true;
             }
-            if (configJson.get(val, "durationDays")) {
-                scheduleDurationDays = val.intValue;
-                
-                // Track start date for countdown limit
-                struct tm timeinfo;
-                if (getLocalTime(&timeinfo)) {
-                    scheduleStartYear = timeinfo.tm_year + 1900;
-                    scheduleStartMonth = timeinfo.tm_mon + 1;
-                    scheduleStartDay = timeinfo.tm_mday;
-                } else {
-                    scheduleStartYear = 2026;
-                    scheduleStartMonth = 7;
-                    scheduleStartDay = 22;
-                }
+            if (configJson.containsKey("durationDays")) {
+                scheduleDurationDays = configJson["durationDays"].as<int>();
+                scheduleStartYear = 2026;
+                scheduleStartMonth = 1;
+                scheduleStartDay = 1;
                 pendingSave = true;
             }
             
@@ -138,6 +162,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length)
         // Log mode changes
         if (systemMode != prevModeLog) {
             logEvent("System mode changed to " + systemMode);
+            showInterrupt("Mode Changed:   ", systemMode.c_str());
             prevModeLog = systemMode;
         }
     }
@@ -200,7 +225,7 @@ void initWiFi()
 void initMQTT()
 {
     mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-    mqttClient.setBufferSize(512); // Increase buffer size for large JSON payloads
+    mqttClient.setBufferSize(1024); // Increase buffer size for JSON payloads
     mqttClient.setCallback(mqttCallback);
     Serial.println("MQTT Client Initialized.");
 
@@ -238,18 +263,12 @@ void logEvent(String message)
 {
     if (!mqttClient.connected()) return;
 
-    FirebaseJson event;
-    event.set("message", message);
-
-    time_t nowTime = time(nullptr);
-    if (nowTime > 100000) {
-        event.set("timestamp", (uint64_t)nowTime * 1000ULL);
-    } else {
-        event.set("timestamp", millis());
-    }
+    JsonDocument event;
+    event["message"] = message;
+    event["timestamp"] = millis();
 
     String eventStr;
-    event.toString(eventStr, false);
+    serializeJson(event, eventStr);
 
     if (mqttClient.publish(MQTT_TOPIC_EVENTS, eventStr.c_str())) {
         Serial.print("[MQTT Logger] Logged Event: ");
@@ -266,41 +285,42 @@ void uploadTelemetry()
 {
     if (!mqttClient.connected()) return;
 
-    FirebaseJson json;
+    JsonDocument doc;
 
     // 1. Status Section
-    json.set("status/temperature",   temperature);
-    json.set("status/environment",   dark ? "DARK" : "BRIGHT");
-    json.set("status/lightIntensity", lightIntensity);
-    json.set("status/light1Status",  light1State);
-    json.set("status/light2Status",  light2State);
-    json.set("status/wifiRSSI",      WiFi.RSSI());
+    doc["status"]["temperature"]    = temperature;
+    doc["status"]["environment"]    = dark ? "DARK" : "BRIGHT";
+    doc["status"]["lightIntensity"] = lightIntensity;
+    doc["status"]["light1Status"]   = light1State;
+    doc["status"]["light2Status"]   = light2State;
+    doc["status"]["wifiRSSI"]       = WiFi.RSSI();
 
     // 2. Settings Section
-    json.set("settings/mode",         systemMode);
-    json.set("settings/chickAgeDays", chickAgeDays);
-    json.set("settings/light2OnTemp", LIGHT2_ON_TEMP);
-    json.set("settings/light2OffTemp", LIGHT2_OFF_TEMP);
+    doc["settings"]["mode"]         = systemMode;
+    doc["settings"]["chickAgeDays"] = chickAgeDays;
+    doc["settings"]["luxThreshold"] = luxThreshold;
+    doc["settings"]["light2OnTemp"]  = light2OnTemp;
+    doc["settings"]["light2OffTemp"] = light2OffTemp;
     
     char scheduleOnTimeStr[6];
     char scheduleOffTimeStr[6];
     snprintf(scheduleOnTimeStr, sizeof(scheduleOnTimeStr), "%02d:%02d", scheduleOnHour, scheduleOnMin);
     snprintf(scheduleOffTimeStr, sizeof(scheduleOffTimeStr), "%02d:%02d", scheduleOffHour, scheduleOffMin);
     
-    json.set("settings/scheduleOnTime",       scheduleOnTimeStr);
-    json.set("settings/scheduleOffTime",      scheduleOffTimeStr);
-    json.set("settings/scheduleCh1Enabled",   scheduleCh1Enabled);
-    json.set("settings/scheduleCh2Enabled",   scheduleCh2Enabled);
-    json.set("settings/scheduleDurationDays", scheduleDurationDays);
-    json.set("settings/scheduleStartYear",    scheduleStartYear);
-    json.set("settings/scheduleStartMonth",   scheduleStartMonth);
-    json.set("settings/scheduleStartDay",     scheduleStartDay);
+    doc["settings"]["scheduleOnTime"]       = scheduleOnTimeStr;
+    doc["settings"]["scheduleOffTime"]      = scheduleOffTimeStr;
+    doc["settings"]["scheduleCh1Enabled"]   = scheduleCh1Enabled;
+    doc["settings"]["scheduleCh2Enabled"]   = scheduleCh2Enabled;
+    doc["settings"]["scheduleDurationDays"] = scheduleDurationDays;
+    doc["settings"]["scheduleStartYear"]    = scheduleStartYear;
+    doc["settings"]["scheduleStartMonth"]   = scheduleStartMonth;
+    doc["settings"]["scheduleStartDay"]     = scheduleStartDay;
 
     // 3. Maintenance & Lifespans Section
-    json.set("maintenance/light1OnCount",     light1OnCount);
-    json.set("maintenance/light2OnCount",     light2OnCount);
-    json.set("maintenance/totalLight1OnTime", totalLight1OnTime);
-    json.set("maintenance/totalLight2OnTime", totalLight2OnTime);
+    doc["maintenance"]["light1OnCount"]     = light1OnCount;
+    doc["maintenance"]["light2OnCount"]     = light2OnCount;
+    doc["maintenance"]["totalLight1OnTime"] = totalLight1OnTime;
+    doc["maintenance"]["totalLight2OnTime"] = totalLight2OnTime;
 
     // Bulb Health % Calculations (based on Light2 main lamp)
     float bulbHoursUsed = totalLight2OnTime / 3600.0f;
@@ -309,20 +329,20 @@ void uploadTelemetry()
     float cycleHealth = ((BULB_RATED_CYCLES - light2OnCount) / BULB_RATED_CYCLES) * 100.0f;
     if (cycleHealth < 0) cycleHealth = 0.0f;
     float bulbHealth = hourHealth < cycleHealth ? hourHealth : cycleHealth;
-    json.set("maintenance/bulbHealth", bulbHealth);
+    doc["maintenance"]["bulbHealth"] = bulbHealth;
 
     // 4. Active Warnings & Alerts
     bool isHighTemp    = (temperature != -100.0f && temperature > HIGH_TEMP_ALERT);
     bool isReplaceSoon = (bulbHealth < 20.0f);
     bool isEndOfLife   = (bulbHoursUsed >= BULB_RATED_HOURS);
 
-    json.set("maintenance/alerts/highTemp",    isHighTemp);
-    json.set("maintenance/alerts/replaceSoon", isReplaceSoon);
-    json.set("maintenance/alerts/endOfLife",   isEndOfLife);
+    doc["maintenance"]["alerts"]["highTemp"]    = isHighTemp;
+    doc["maintenance"]["alerts"]["replaceSoon"] = isReplaceSoon;
+    doc["maintenance"]["alerts"]["endOfLife"]   = isEndOfLife;
 
     // Serialize payload
     String jsonStr;
-    json.toString(jsonStr, false);
+    serializeJson(doc, jsonStr);
 
     if (mqttClient.publish(MQTT_TOPIC_STATUS, jsonStr.c_str())) {
         Serial.println("[MQTT] Telemetry published successfully.");
@@ -355,34 +375,33 @@ void maintainConnections()
 
     bool wifiNowConnected = (WiFi.status() == WL_CONNECTED);
 
-    // ── WiFi Reconnect ────────────────────────────
+    static unsigned long lastWifiAttempt = 0;
+
+    // ── WiFi Reconnect (Non-blocking Background Scanner) ───────
     if (!wifiNowConnected)
     {
         if (prevWifiConnected) {
             // Just lost connection
             setWiFiLED(false);
             Serial.println("[Wi-Fi Monitor] Connection lost. Reconnecting in background...");
-            // Reset time display timer so time won't show for 30s after reconnect
-            extern unsigned long lastTimeInterrupt;
-            lastTimeInterrupt = millis();
         }
 
-        // Non-blocking reconnect attempt
-        WiFi.disconnect();
-        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-        int retries = 0;
-        bool ledBlink = false;
-        while (WiFi.status() != WL_CONNECTED && retries < 10) {
-            ledBlink = !ledBlink;
-            setWiFiLED(ledBlink); // Blink during reconnect too
-            delay(500);
-            Serial.print(".");
-            retries++;
+        unsigned long now = millis();
+        if (now - lastWifiAttempt > 10000) { // Retry every 10s
+            lastWifiAttempt = now;
+            WiFi.disconnect();
+            WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+            Serial.println("[Wi-Fi Monitor] Reconnecting to WiFi in background...");
         }
-        setWiFiLED(false);
-        Serial.println();
-        wifiNowConnected = (WiFi.status() == WL_CONNECTED);
+
+        // Non-blocking WiFi LED blinking (toggle every 500ms)
+        static unsigned long lastBlink = 0;
+        static bool blinkState = false;
+        if (now - lastBlink >= 500) {
+            lastBlink = now;
+            blinkState = !blinkState;
+            setWiFiLED(blinkState);
+        }
     }
 
     // ── WiFi Just Connected (transition) ─────────

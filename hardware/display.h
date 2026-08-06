@@ -3,7 +3,6 @@
 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include <time.h>
 #include "config.h"
 #include "sensors.h"
 #include "relays.h"
@@ -70,22 +69,27 @@ void showInterrupt(const char* line1, const char* line2, unsigned long durationM
 }
 
 //--------------------------------------------------
-// Home page — permanent default display
+// Home page — permanent default display (Page 0)
 //
-//  Line 0: "Status:  DARK   "  or  "Status:  BRIGHT "
-//  Line 1: " 32.5°C   AUTO  "
+//  Line 0: "Lux :45.2   DARK" (or BRIGHT)
+//  Line 1: "Temp:32.5   AUTO" (or MANUAL / SCHED)
 //--------------------------------------------------
 void showHomePage()
 {
     char buf0[17] = {0};
     char buf1[17] = {0};
 
-    snprintf(buf0, sizeof(buf0), "Status:  %-7s", dark ? "DARK" : "BRIGHT");
+    // Format Line 0: Lux reading + Environment state
+    snprintf(buf0, sizeof(buf0), "Lux :%-5.1f %-6s", lightIntensity, dark ? "DARK" : "BRIGHT");
+
+    // Format Line 1: Temp reading + Current System Mode
+    String modeLabel = systemMode;
+    if (modeLabel == "SCHEDULE") modeLabel = "SCHED";
 
     if (temperature == -100.0f) {
-        snprintf(buf1, sizeof(buf1), " Temp:ERR  %-4s ", systemMode.c_str());
+        snprintf(buf1, sizeof(buf1), "Temp: ERR  %-6s", modeLabel.c_str());
     } else {
-        snprintf(buf1, sizeof(buf1), " %5.1f%cC  %-4s ", temperature, (char)0xDF, systemMode.c_str());
+        snprintf(buf1, sizeof(buf1), "Temp:%-5.1f %-6s", temperature, modeLabel.c_str());
     }
 
     lcd.setCursor(0, 0);
@@ -99,7 +103,7 @@ void showHomePage()
 //
 // Handles:
 //   • Interrupt expiry → clear + return to home
-//   • Home page refresh (every 500ms when idle)
+//   • Home page refresh (every 100ms when idle)
 //--------------------------------------------------
 void updateDisplay()
 {
@@ -116,8 +120,8 @@ void updateDisplay()
         return;
     }
 
-    // Refresh home page every 500ms when no interrupt is active
-    if (!interruptActive && now - lastHomeRefresh >= 500)
+    // Refresh home page every 100ms when no interrupt is active
+    if (!interruptActive && now - lastHomeRefresh >= 100)
     {
         lastHomeRefresh = now;
         showHomePage();
@@ -126,7 +130,7 @@ void updateDisplay()
 }
 
 //--------------------------------------------------
-// Button: press to show current time/date for 3 seconds
+// Button: press to show system status for 2 seconds
 //--------------------------------------------------
 void checkDisplayButton()
 {
@@ -139,21 +143,12 @@ void checkDisplayButton()
         if (now - lastPageSwitch > 250) // 250ms debounce
         {
             lastPageSwitch = now;
-
-            struct tm timeinfo;
-            if (getLocalTime(&timeinfo))
-            {
-                char timeLine[17], dateLine[17];
-                snprintf(timeLine, sizeof(timeLine), "Time: %02d:%02d:%02d",
-                         timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-                snprintf(dateLine, sizeof(dateLine), "Date: %02d/%02d/%04d",
-                         timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
-                showInterrupt(timeLine, dateLine, 3000);
-            }
-            else
-            {
-                showInterrupt("Time: Not Synced", "NTP pending...  ", 2000);
-            }
+            char line0[17], line1[17];
+            snprintf(line0, sizeof(line0), "Mode: %-10s", systemMode.c_str());
+            snprintf(line1, sizeof(line1), "L1:%-3s  L2:%-3s   ",
+                     light1State ? "ON" : "OFF",
+                     light2State ? "ON" : "OFF");
+            showInterrupt(line0, line1, 2000);
         }
     }
     prevBtnState = btnState;

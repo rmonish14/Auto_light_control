@@ -3,15 +3,14 @@
 SMART POULTRY AUTOMATION SYSTEM
 ---------------------------------------------------------
 Controller  : ESP32 DevKit V1
-Sensors     : DS18B20 (Temp), LDR LM393 (Light Detection)
-Outputs     : Relay 1 (Light 1 — LDR Day/Night Auto)
+Sensors     : DS18B20 (Temp), VEML7700 (Light Detection I2C)
+Outputs     : Relay 1 (Light 1 — Day/Night Auto)
               Relay 2 (Light 2 — Temperature-Based Auto)
 Indicators  : LED_LIGHT1 (GPIO4), LED_LIGHT2 (GPIO5),
               LED_WIFI (GPIO2 — Solid=Connected, Blink=TX)
 Display     : 16x2 I2C LCD (GPIO21 SDA, GPIO22 SCL)
 Page Button : GPIO19
 Connectivity: Wi-Fi, MQTT (HiveMQ public broker)
-Time Sync   : NTP
 Persistence : Non-Volatile Storage (Preferences/NVS)
 
 Author: Monishwaran
@@ -19,7 +18,8 @@ Author: Monishwaran
 */
 
 #include <Arduino.h>
-#include <time.h>
+#include <Wire.h>
+#include <SPI.h>
 #include "config.h"
 #include "leds.h"
 #include "persistence.h"
@@ -34,7 +34,6 @@ Author: Monishwaran
 unsigned long lastLoopTime        = 0;
 unsigned long lastTelemetryUpload = 0;
 unsigned long lastSaveTime        = 0;
-unsigned long lastTimeInterrupt   = 0; // Global: reset by cloud.h on WiFi disconnect
 
 //--------------------------------------------------
 // Setup
@@ -67,11 +66,7 @@ void setup()
     // 6. Initialize WiFi (shows progress on LCD)
     initWiFi();
 
-    // 7. Setup NTP Server Time Sync
-    Serial.println("Syncing time with NTP Server...");
-    configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
-
-    // 8. Connect to MQTT Broker (shows progress on LCD)
+    // 7. Connect to MQTT Broker (shows progress on LCD)
     initMQTT();
 
     lastLoopTime        = millis();
@@ -96,99 +91,53 @@ void loop()
     unsigned long now = millis();
 
     // 2. Update sensor readings
-    temperature = readTemperature();
-    dark        = isDark();
+    // Read temperature asynchronously to prevent loop blocking
+    static unsigned long lastTempRequest = 0;
+    static bool tempRequestPending = false;
+    
+    if (now - lastTempRequest >= 2000 && !tempRequestPending) {
+        requestTemperature();
+        lastTempRequest = now;
+        tempRequestPending = true;
+    }
+    
+    // 12-bit resolution requires max 750ms conversion time
+    if (tempRequestPending && (now - lastTempRequest >= 750)) {
+        temperature = readTemperature();
+        tempRequestPending = false;
+    }
+    
+    // Always read light instantly
+    dark = isDark();
 
     // 3. Run Decision Engine based on active mode
     if (systemMode == "AUTO")
     {
-        // --- Both lights follow LDR: Dark = ON, Bright = OFF ---
+        // --- AUTO Mode: BOTH Relays depend ONLY on Lux (dark = lightIntensity < luxThreshold) ---
+        // When lux drops below threshold (dark = true), BOTH relays turn ON. Otherwise OFF.
         setLight1(dark);
         setLight2(dark);
     }
     else if (systemMode == "MANUAL")
     {
-        // --- Remote Web Overrides ---
+        // --- MANUAL Mode: Relays strictly controlled ONLY by web overrides (sensors still read continuously) ---
         setLight1(light1Override);
         setLight2(light2Override);
     }
     else if (systemMode == "SCHEDULE")
     {
-        struct tm timeinfo;
-        bool timeSynced = getLocalTime(&timeinfo);
-
-        if (timeSynced)
-        {
-            // A. Check schedule duration expiration
-            if (scheduleDurationDays > 0 && scheduleStartYear > 0)
-            {
-                struct tm start_tm = {0};
-                start_tm.tm_year = scheduleStartYear - 1900;
-                start_tm.tm_mon = scheduleStartMonth - 1;
-                start_tm.tm_mday = scheduleStartDay;
-                start_tm.tm_hour = 0;
-                start_tm.tm_min = 0;
-                start_tm.tm_sec = 0;
-                start_tm.tm_isdst = -1; // Let mktime determine DST
-
-                time_t startTime = mktime(&start_tm);
-                time_t nowTime = mktime(&timeinfo);
-
-                double seconds = difftime(nowTime, startTime);
-                double elapsedDays = seconds / (24.0 * 3600.0);
-
-                if (elapsedDays >= (double)scheduleDurationDays)
-                {
-                    systemMode = "MANUAL";
-                    light1Override = false;
-                    light2Override = false;
-                    setLight1(false);
-                    setLight2(false);
-                    pendingSave = true;
-                    logEvent("Schedule completed (" + String(scheduleDurationDays) + " days). Reverted to MANUAL.");
-                    return;
-                }
-            }
-
-            // B. Evaluate ON/OFF scheduler window
-            int currentMin = timeinfo.tm_hour * 60 + timeinfo.tm_min;
-            int onMin = scheduleOnHour * 60 + scheduleOnMin;
-            int offMin = scheduleOffHour * 60 + scheduleOffMin;
-
-            bool isScheduledON = false;
-            if (onMin < offMin)
-            {
-                // Same-day schedule (e.g. 07:00 to 19:00)
-                isScheduledON = (currentMin >= onMin && currentMin < offMin);
-            }
-            else
-            {
-                // Cross-midnight schedule (e.g. 21:00 to 05:00 next day)
-                isScheduledON = (currentMin >= onMin || currentMin < offMin);
-            }
-
-            // Apply scheduled state directly to the Main Lighting Channel (Channel 2)
-            setLight2(isScheduledON);
-        }
-        else
-        {
-            // Time sync failed: Fallback to LDR AUTO mode on Main Light (Channel 2)
-            static unsigned long lastWarn = 0;
-            if (now - lastWarn > 30000) {
-                Serial.println("[Schedule Warning] NTP not synced. Falling back to LDR AUTO.");
-                lastWarn = now;
-            }
-            
-            setLight2(dark);
-        }
+        // --- SCHEDULE Mode: Relays strictly controlled by web schedule signals ---
+        setLight1(scheduleLight1State);
+        setLight2(scheduleLight2State);
     }
 
     // 4. Update indicator LEDs to match relay states
+    updateLight1LED(light1State);
     updateLight2LED(light2State);
 
     // 5. Interrupt triggers — detect state changes and show LCD notifications
 
-    // ── LDR state change → show relay states for 2s
+    // ── Ambient Light state change → show relay states for 2s
     static bool prevDarkState = false;
     if (dark != prevDarkState)
     {
@@ -211,22 +160,6 @@ void loop()
     }
     prevHighTempFlag = isHighTempNow;
 
-    // ── Auto time display every 30 seconds (WiFi must be connected)
-    if (now - lastTimeInterrupt >= 30000 && !interruptActive && WiFi.status() == WL_CONNECTED)
-    {
-        lastTimeInterrupt = now;
-        struct tm timeinfo;
-        if (getLocalTime(&timeinfo))
-        {
-            char timeLine[17], dateLine[17];
-            snprintf(timeLine, sizeof(timeLine), "Time: %02d:%02d:%02d",
-                     timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-            snprintf(dateLine, sizeof(dateLine), "Date: %02d/%02d/%04d",
-                     timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
-            showInterrupt(timeLine, dateLine);
-        }
-    }
-
     // 5. Periodically update active runtimes
     updateActiveRuntimes();
 
@@ -240,14 +173,6 @@ void loop()
         printSensors();
         Serial.print("Mode        : "); Serial.println(systemMode);
         Serial.print("Light Relay : "); Serial.println(light2State ? "ON" : "OFF");
-
-        struct tm timeinfo;
-        if (getLocalTime(&timeinfo)) {
-            Serial.print("NTP Time    : ");
-            Serial.println(asctime(&timeinfo));
-        } else {
-            Serial.println("NTP Time    : Not Synced");
-        }
     }
 
     // 7. Non-Volatile Persistence Save (on relay changes, every 5 mins)
@@ -263,6 +188,6 @@ void loop()
     // 9. LCD update — handles interrupt expiry and home page refresh
     updateDisplay();
 
-    // Small delay (~10Hz loop)
-    delay(100);
+    // Small delay (~100Hz loop) for near-instant reaction
+    delay(10);
 }

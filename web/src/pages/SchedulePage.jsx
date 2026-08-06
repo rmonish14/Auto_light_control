@@ -39,8 +39,8 @@ export default function SchedulePage({ data, publish, disabled }) {
       scheduleConfig: {
         onTime: schedule.onTime,
         offTime: schedule.offTime,
-        ch1Enabled: false,
-        ch2Enabled: true,
+        ch1Enabled: schedule.ch1Enabled,
+        ch2Enabled: schedule.ch2Enabled,
         durationDays: computedDays,
       }
     });
@@ -87,6 +87,32 @@ export default function SchedulePage({ data, publish, disabled }) {
               disabled={disabled}
             />
             <div className="form-hint">Time when channels automatically de-energize each day</div>
+          </div>
+
+          <div className="form-group" style={{ marginTop: 14 }}>
+            <label className="form-label" style={{ marginBottom: 8, display: 'block' }}>Target Lighting Channels</label>
+            <div style={{ display: 'flex', gap: 20 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--text-1)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={schedule.ch1Enabled}
+                  onChange={e => setSchedule({ ...schedule, ch1Enabled: e.target.checked })}
+                  disabled={disabled}
+                  style={{ accentColor: 'var(--accent)' }}
+                />
+                Light Relay 1 (CH1)
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--text-1)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={schedule.ch2Enabled}
+                  onChange={e => setSchedule({ ...schedule, ch2Enabled: e.target.checked })}
+                  disabled={disabled}
+                  style={{ accentColor: 'var(--accent)' }}
+                />
+                Light Relay 2 (CH2)
+              </label>
+            </div>
           </div>
 
           <div className="form-group" style={{ marginTop: 18 }}>

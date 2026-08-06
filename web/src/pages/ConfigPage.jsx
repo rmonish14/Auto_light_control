@@ -5,6 +5,7 @@ export default function ConfigPage({ data, publish, disabled }) {
     highTempAlert: 38.0,
     light2OnTemp: data.light2OnTemp ?? 34.0,
     light2OffTemp: data.light2OffTemp ?? 30.0,
+    luxThreshold: data.luxThreshold ?? 50.0,
   });
 
   const [saved, setSaved] = useState(false);
@@ -20,7 +21,11 @@ export default function ConfigPage({ data, publish, disabled }) {
         highTempAlert: thresholds.highTempAlert,
         light2OnTemp: thresholds.light2OnTemp,
         light2OffTemp: thresholds.light2OffTemp,
-      }
+        luxThreshold: thresholds.luxThreshold,
+      },
+      luxThreshold: thresholds.luxThreshold,
+      light2OnTemp: thresholds.light2OnTemp,
+      light2OffTemp: thresholds.light2OffTemp,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -28,12 +33,12 @@ export default function ConfigPage({ data, publish, disabled }) {
 
   return (
     <div className="page">
-      <div className="section-title">Temperature Thresholds</div>
+      <div className="section-title">Facility Control Thresholds</div>
       <div className="page-grid-2">
         <div className="card">
           <div className="card-label">
             <div className="card-icon" style={{ background: 'var(--red-dim)', color: 'var(--red)' }}>🔥</div>
-            Alert Thresholds
+            Alert & Auto Control Thresholds
           </div>
 
           <div className="form-group">
@@ -47,6 +52,19 @@ export default function ConfigPage({ data, publish, disabled }) {
               disabled={disabled}
             />
             <div className="form-hint">Triggers LCD interrupt + MQTT alert when exceeded</div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Ambient Lux Threshold (Lux)</label>
+            <input
+              className="form-input"
+              type="number"
+              step="1"
+              value={thresholds.luxThreshold}
+              onChange={e => handleChange('luxThreshold', e.target.value)}
+              disabled={disabled}
+            />
+            <div className="form-hint">Light 1 turns ON when ambient light drops below this threshold (Lux)</div>
           </div>
 
           <div className="form-group">

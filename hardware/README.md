@@ -8,7 +8,7 @@ This folder contains all the ESP32 Arduino firmware files.
 |---|---|
 | `Poultry_Automation.ino.ino` | Main sketch (setup + loop) |
 | `config.h` | Pin mappings, thresholds, constants |
-| `sensors.h` | DS18B20 & LDR sensor drivers |
+| `sensors.h` | DS18B20 & VEML7700 sensor drivers |
 | `relays.h` | Relay control with telemetry tracking |
 | `leds.h` | Indicator LED driver |
 | `cloud.h` | WiFi, MQTT publish/subscribe |
@@ -30,11 +30,10 @@ arduino-cli upload -p COM4 --fqbn esp32:esp32:esp32 .
 | GPIO | Device | Function |
 |---|---|---|
 | 18 | DS18B20 | Temperature (1-Wire) |
-| 35 | LM393 LDR | Light detection (digital) |
 | 26 | Relay IN1 | Light 1 control |
 | 27 | Relay IN2 | Light 2 control |
-| 21 | LCD SDA | I2C data |
-| 22 | LCD SCL | I2C clock |
+| 21 | I2C SDA | LCD & VEML7700 |
+| 22 | I2C SCL | LCD & VEML7700 |
 | 19 | Push button | LCD page button |
 | 4 | LED | Light 1 status |
 | 5 | LED | Light 2 status |

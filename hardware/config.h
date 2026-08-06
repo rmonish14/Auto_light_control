@@ -18,19 +18,19 @@
 #define MQTT_TOPIC_EVENTS   "poultry/events"
 
 //--------------- NTP Time Settings ----------------
-#define NTP_SERVER          "pool.ntp.org"
-#define GMT_OFFSET_SEC      19800   // GMT +5:30 (India Standard Time)
-#define DAYLIGHT_OFFSET_SEC 0
+// NTP disabled
+
 
 //--------------- Pin Definitions ------------------
 // DS18B20 1-Wire Temperature Sensor
 #define DS18B20_PIN         18
 
-// LDR Module (LM393 Digital Output)
-#define LDR_PIN             35
+// I2C Pins (Shared by LCD and VEML7700)
+#define I2C_SDA_PIN         21
+#define I2C_SCL_PIN         22
 
 // Relay Outputs
-#define LIGHT1_RELAY_PIN    26   // Relay 1: Main Poultry Light (LDR Day/Night)
+#define LIGHT1_RELAY_PIN    26   // Relay 1: Main Poultry Light (VEML7700 Day/Night)
 #define LIGHT2_RELAY_PIN    27   // Relay 2: Second Light (Temperature-based)
 
 // Indicator LEDs
@@ -53,10 +53,7 @@
 #define LIGHT2_OFF_TEMP     30.0f
 #define HIGH_TEMP_ALERT     38.0f
 
-//--------------- LDR Configuration ----------------
-// true  = HIGH means DARK
-// false = LOW means DARK
-#define LDR_HIGH_IS_DARK    true
+
 
 //--------------- Bulb & Relay Lifespan Ratings -----
 #define BULB_RATED_HOURS    25000.0f   // Rated hours of operation

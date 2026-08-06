@@ -2,8 +2,10 @@
 #define SENSORS_H
 
 #include <Arduino.h>
+#include <Wire.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <Adafruit_VEML7700.h>
 #include "config.h"
 
 //====================================================
@@ -11,6 +13,7 @@
 //====================================================
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
+Adafruit_VEML7700 veml = Adafruit_VEML7700();
 
 //====================================================
 // Global Variables for Sensor Readings
@@ -18,6 +21,9 @@ DallasTemperature sensors(&oneWire);
 float temperature = 0.0f;
 bool dark = false;
 float lightIntensity = 0.0f;
+float luxThreshold = 50.0f;
+float light2OnTemp = 34.0f;
+float light2OffTemp = 30.0f;
 
 //====================================================
 // Initialize Sensors
@@ -26,42 +32,51 @@ void initSensors()
 {
     sensors.begin();
     sensors.setResolution(DS18B20_RESOLUTION);
-    pinMode(LDR_PIN, INPUT);
+    sensors.setWaitForConversion(false); // Make conversion non-blocking
+    
+    if (veml.begin()) {
+        Serial.println("VEML7700 Initialized.");
+        veml.setGain(VEML7700_GAIN_1_8);
+        veml.setIntegrationTime(VEML7700_IT_25MS); // Fastest integration time for instant reaction
+    } else {
+        Serial.println("VEML7700 NOT FOUND!");
+    }
+    
     Serial.println("Sensors Initialized.");
 }
 
 //====================================================
 // Temperature Read (DS18B20)
 //====================================================
-float readTemperature()
+void requestTemperature()
 {
     sensors.requestTemperatures();
+}
+
+float readTemperature()
+{
     float t = sensors.getTempCByIndex(0);
-    if (t != DEVICE_DISCONNECTED_C) {
+    // Ignore 85.0C which is the default uninitialized value for DS18B20
+    if (t != DEVICE_DISCONNECTED_C && t != 85.0f) {
         temperature = t;
-    } else {
+    } else if (t == DEVICE_DISCONNECTED_C) {
         temperature = -100.0f; // Error indicator
     }
     return temperature;
 }
 
 //====================================================
-// LDR Day/Night Detection
+// VEML7700 Ambient Light Day/Night Detection
 //====================================================
 bool isDark()
 {
-    // Read raw analog value (0 - 4095 on ESP32 12-bit ADC)
-    int rawVal = analogRead(LDR_PIN);
+    float lux = veml.readLux();
+    if (lux < 0) lux = 0; // prevent negative readings
     
-    // Map: 4095 (darkest) to 0%, 0 (brightest) to 100%
-    float pct = ((4095.0f - rawVal) / 4095.0f) * 100.0f;
-    if (pct < 0.0f) pct = 0.0f;
-    if (pct > 100.0f) pct = 100.0f;
-    
-    lightIntensity = pct;
+    lightIntensity = lux;
 
-    // Consider it dark if light intensity drops below 30%
-    dark = (lightIntensity < 30.0f);
+    // Consider it dark if light intensity drops below the threshold (e.g. 50 lux)
+    dark = (lightIntensity < luxThreshold);
 
     return dark;
 }
@@ -82,7 +97,7 @@ void printSensors()
 
     Serial.print("Light Level : ");
     Serial.print(lightIntensity, 1);
-    Serial.print(" % (");
+    Serial.print(" Lux (");
     Serial.print(dark ? "DARK" : "BRIGHT");
     Serial.println(")");
     Serial.println("--------------------------------------");
